@@ -1,0 +1,599 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>R-Tech Food Center</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #f8f9fa; font-family: sans-serif; padding-bottom: 120px; }
+        .banner {
+            background: linear-gradient(rgba(0,0,0,0.6), rgba(0,0,0,0.7)), url('https://images.unsplash.com/photo-1504674900247-0877df9cc836?w=1000') center/cover;
+            color: white; padding: 35px 20px; text-align: center; border-bottom-left-radius: 20px; border-bottom-right-radius: 20px;
+        }
+        .category-header { border-left: 5px solid #ffc107; padding-left: 10px; margin: 30px 0 15px 0; font-weight: bold; color: #333; }
+        .food-card { border: none; border-radius: 15px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.05); background: white; position: relative; transition: 0.3s; }
+        .food-img { height: 130px; object-fit: cover; }
+        
+        .qty-btn { background-color: #198754; color: white; border-radius: 50%; width: 32px; height: 32px; padding: 0; font-weight: bold; border: none; line-height: 1; }
+        .qty-btn-minus { background-color: #dc3545; }
+        .qty-input { width: 35px; border: none; text-align: center; font-weight: bold; background: transparent; }
+        
+        .out-of-stock-overlay { position: absolute; top: 0; left: 0; width: 100%; height: 100%; background: rgba(255,255,255,0.85); display: none; flex-direction: column; justify-content: center; align-items: center; z-index: 20; color: #dc3545; font-weight: bold; font-size: 1.1rem; }
+        .sold-out .out-of-stock-overlay { display: flex; }
+        .sold-out button { display: none !important; }
+
+        .cart-bar {
+            position: fixed; bottom: 0; left: 0; right: 0; background-color: #ffffff;
+            box-shadow: 0 -5px 15px rgba(0,0,0,0.1); padding: 15px; z-index: 1000;
+            border-top-left-radius: 20px; border-top-right-radius: 20px;
+        }
+
+        .status-box { background-color: #fff; border-radius: 12px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .countdown-text { font-size: 13px; color: #dc3545; font-weight: bold; display: block; margin-top: 2px; }
+    </style>
+</head>
+<body>
+
+    <div class="banner">
+        <h2 class="fw-bold">เจ๊สาวตามสั่ง</h2>
+        <p class="mb-3 small">✨ สดใหม่ สะอาด การันตี ✨</p>
+        
+        <div class="card bg-dark text-white p-3 mx-auto mb-2" style="max-width: 400px; border-radius: 12px;">
+            <label for="table-select" class="form-label fw-bold">📍 กรุณาเลือกหมายเลขโต๊ะของคุณ</label>
+            <select id="table-select" class="form-select text-center fw-bold text-success" onchange="updateTable()">
+                <option value="ยังไม่ได้เลือก">-- เลือกโต๊ะ (1-6) --</option>
+                <option value="1">โต๊ะที่ 1</option>
+                <option value="2">โต๊ะที่ 2</option>
+                <option value="3">โต๊ะที่ 3</option>
+                <option value="4">โต๊ะที่ 4</option>
+                <option value="5">โต๊ะที่ 5</option>
+                <option value="6">โต๊ะที่ 6</option>
+            </select>
+        </div>
+    </div>
+
+    <div class="container mt-3">
+        <div id="order-status-section" class="status-box p-3 mb-3 d-none">
+            <div class="d-flex justify-content-between align-items-center">
+                <div>
+                    <span class="fw-bold text-secondary small">ติดตามออเดอร์ล่าสุดของคุณ:</span>
+                    <div class="fw-bold text-dark mt-1">หมายเลขโต๊ะของคุณ: <span id="status-table-num">-</span></div>
+                    <span id="countdown-area" class="countdown-text d-none">⏳ คาดว่าจะเสร็จในอีก: <span id="timer-label">07:00</span> นาที</span>
+                </div>
+                <div class="text-end">
+                    <span id="order-status-badge" class="badge bg-warning fs-6 py-2 px-3">รอทำ</span>
+                    <button id="cancel-order-btn" class="btn btn-outline-danger btn-sm fw-bold d-block mt-2 ms-auto" onclick="cancelMyOrder()">❌ ยกเลิกออเดอร์</button>
+                </div>
+            </div>
+        </div>
+
+        <div class="mb-4">
+            <input type="text" id="search-input" class="form-control py-2 shadow-sm" style="border-radius: 10px;" placeholder="🔍 ค้นหาเมนูอาหารที่คุณต้องการที่นี่..." onkeyup="searchMenu()">
+        </div>
+
+        <div class="category-block">
+            <h5 class="category-header">🍳 หมวดหมู่: อาหารตามสั่ง & แกงต้มยำ</h5>
+            <div class="row g-3">
+                <script>
+                    // ยุบรวมกลุ่มเมนูตามคำขอ: กะเพรา, ข้าวผัด, สุกี้, ผัดซีอิ๊ว, ผัดพริกแกง ให้เลือก หมู ไก่ กุ้ง ทะเลรวม (กุ้ง/ทะเลรวม +5 บาท)
+                    const foods = [
+                        {
+                            id: "kraprao_group", 
+                            name: "ผัดกะเพรา", 
+                            price: 50, 
+                            img: "https://images.unsplash.com/photo-1626132647523-66f5bf380027?w=400",
+                            hasOptions: true,
+                            options: ["หมู", "ไก่", "กุ้ง", "ทะเลรวม"],
+                            optionPrices: { "หมู": 0, "ไก่": 0, "กุ้ง": 5, "ทะเลรวม": 5 }
+                        },
+                        {
+                            id: "khao_phad_group", 
+                            name: "ข้าวผัด", 
+                            price: 50, 
+                            img: "https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=400",
+                            hasOptions: true,
+                            options: ["หมู", "ไก่", "กุ้ง", "ทะเลรวม"],
+                            optionPrices: { "หมู": 0, "ไก่": 0, "กุ้ง": 5, "ทะเลรวม": 5 }
+                        },
+                        {
+                            id: "suki_group", 
+                            name: "สุกี้", 
+                            price: 50, 
+                            img: "https://images.unsplash.com/photo-1547592165-3a8278d5f624?w=400",
+                            hasOptions: true,
+                            options: ["หมู", "ไก่", "กุ้ง", "ทะเลรวม"],
+                            optionPrices: { "หมู": 0, "ไก่": 0, "กุ้ง": 5, "ทะเลรวม": 5 }
+                        },
+                        {
+                            id: "phad_see_ew_group", 
+                            name: "ผัดซีอิ๊ว", 
+                            price: 50, 
+                            img: "https://images.unsplash.com/photo-1617093727343-374698b1b08d?w=400",
+                            hasOptions: true,
+                            options: ["หมู", "ไก่", "กุ้ง", "ทะเลรวม"],
+                            optionPrices: { "หมู": 0, "ไก่": 0, "กุ้ง": 5, "ทะเลรวม": 5 }
+                        },
+                        {
+                            id: "prik_kaeng_group", 
+                            name: "ผัดพริกแกง", 
+                            price: 50, 
+                            img: "https://images.unsplash.com/photo-1455619452474-d2be8b1e70cd?w=400",
+                            hasOptions: true,
+                            options: ["หมู", "ไก่", "กุ้ง", "ทะเลรวม"],
+                            optionPrices: { "หมู": 0, "ไก่": 0, "กุ้ง": 5, "ทะเลรวม": 5 }
+                        },
+                        // เมนูเส้นและจานเดี่ยวเดี่ยวอื่นๆ ที่เหลือ
+                        {id: "rad_na_muu", name: "ราดหน้าหมู", price: 45, img: "https://images.unsplash.com/photo-1585032226651-759b368d7246?w=400"},
+                        {id: "khua_kai", name: "ก๋วยเตี๋ยวคั่วไก่", price: 45, img: "https://images.unsplash.com/photo-1544025162-d76694265947?w=400"},
+                        {id: "mama_kee_mao", name: "มาม่าผัดขี้เมา", price: 60, img: "https://images.unsplash.com/photo-1608897013039-887f21d8c804?w=400"},
+                        {id: "rad_na_talay", name: "ราดหน้าทะเลรวม", price: 65, img: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400"},
+                        {id: "khua_kling", name: "คั่วกลิ้งหมู ", price: 65, img: "https://images.unsplash.com/photo-1627308595229-7830a5c91f9f?w=400"},
+                        {id: "kuay_tiew_muu", name: "ก๋วยเตี๋ยวหมูหมัก ", price: 35, img: "https://images.unsplash.com/photo-1569718212165-3a8278d5f624?w=400"},
+                        {id: "kuay_tiew_tom_yum", name: "ก๋วยเตี๋ยวหมูต้มยำ", price: 35, img: "https://images.unsplash.com/photo-1603133872878-684f208fb84b?w=400"},
+                        {id: "muu_kratiem", name: "หมูกระเทียม", price: 50, img: "https://images.unsplash.com/photo-1512058564366-18510be2db19?w=400"},
+                        {id: "khana_muu_krob", name: "ผัดคะน้าหมูกรอบ", price: 65, img: "https://images.unsplash.com/photo-1563379091339-03b21ab4a4f8?w=400"},
+                        {id: "phad_phong_karee", name: "ผัดผงกะหรี่", price: 50, img: "https://images.unsplash.com/photo-1547592180-85f173990554?w=400"},
+                        {id: "phad_phak_ruam", name: "ผัดผักรวมมิตร", price: 70, img: "https://images.unsplash.com/photo-1540420773420-3366772f4999?w=400"},
+                        {id: "khao_khai_jiao", name: "ข้าวไข่เจียว", price: 45, img: "https://images.unsplash.com/photo-1551183053-bf91a1d81141?w=400"},
+                        // ต้ม/ยำ
+                        {id: "tom_jued_taohu", name: "ต้มจืดเต้าหู้", price: 70, img: "https://images.unsplash.com/photo-1547592165-3a8278d5f624?w=400"},
+                        {id: "tom_yum_kung", name: "ต้มยำกุ้ง", price: 70, img: "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=400"},
+                        {id: "tom_yum_ruam_mit", name: "ต้มยำรวมมิตร", price: 70, img: "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=400"},
+                        {id: "yam_ruam_mit", name: "ยำรวมมิตร / ยำรวม", price: 70, img: "https://images.unsplash.com/photo-1546069901-ba9599a7e63c?w=400"},
+                        {id: "tom_yum_muu_sub", name: "ต้มยำหมูสับ", price: 60, img: "https://images.unsplash.com/photo-1547592165-3a8278d5f624?w=400"},
+                        {id: "tom_yum_thay_ruam", name: "ต้มยำทะเลรวม", price: 75, img: "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=400"},
+                        {id: "tom_yum_hed", name: "ต้มยำเห็ดรวม", price: 60, img: "https://images.unsplash.com/photo-1547592165-3a8278d5f624?w=400"},
+                        {id: "tom_yum_pla_muek", name: "ต้มยำปลาหมึก", price: 65, img: "https://images.unsplash.com/photo-1534422298391-e4f8c172dddb?w=400"}
+                    ];
+                    
+                    foods.forEach(f => {
+                        document.write(`
+                            <div class="col-6 col-md-4 food-item-card" id="item-${f.id}" data-name="${f.name}">
+                                <div class="card food-card">
+                                    <div class="out-of-stock-overlay">🛑 สินค้าหมดชั่วคราว</div>
+                                    <img src="${f.img}" class="card-img-top food-img">
+                                    <div class="card-body p-2">
+                                        <h6 class="fw-bold text-truncate mb-1">${f.name}</h6>
+                                        <div class="d-flex justify-content-between align-items-center">
+                                            <span class="text-success fw-bold">฿${f.price} ${f.hasOptions ? 'ขึ้นไป' : ''}</span>
+                                            <button class="qty-btn" onclick="openOptionModal('${f.name}', ${f.price}, ${f.hasOptions ? true : false}, '${f.id}')">+</button>
+                                        </div>
+                                    </div>
+                                </div>
+                            </div>
+                        `);
+                    });
+                </script>
+            </div>
+        </div>
+
+        <div class="category-block mt-4">
+            <h5 class="category-header">🍟 หมวดหมู่: ของทานเล่น</h5>
+            <div class="row g-2">
+                <script>
+                    const snacks = [
+                        {id: "french_fries_s", name: "เฟรนช์ฟรายส์ เล็ก", price: 39},
+                        {id: "french_fries_m", name: "เฟรนช์ฟรายส์ กลาง", price: 49},
+                        {id: "french_fries_l", name: "เฟรนช์ฟรายส์ ใหญ่", price: 59}
+                    ];
+
+                    snacks.forEach(s => {
+                        document.write(`
+                            <div class="col-6 col-md-4 food-item-card" id="item-${s.id}" data-name="${s.name}">
+                                <div class="card p-2 border-0 shadow-sm position-relative text-center" style="border-radius: 12px; background: white;">
+                                    <div class="out-of-stock-overlay" style="border-radius:12px;">🛑 หมด</div>
+                                    <div class="fw-bold text-truncate mb-1">🍟 ${s.name} (฿${s.price})</div>
+                                    <div class="d-flex justify-content-center align-items-center mt-1">
+                                        <button class="qty-btn qty-btn-minus" onclick="changeDirectQty('${s.name}', ${s.price}, -1)">-</button>
+                                        <input type="number" id="qty-${s.name}" class="qty-input" value="0" min="0" readonly>
+                                        <button class="qty-btn" onclick="changeDirectQty('${s.name}', ${s.price}, 1)">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `);
+                    });
+                </script>
+            </div>
+        </div>
+
+        <div class="category-block mt-4">
+            <h5 class="category-header">🥤 หมวดหมู่: เครื่องดื่ม (15 บาททุกรายการ)</h5>
+            <div class="row g-2 text-center">
+                <script>
+                    const drinks = [
+                        {id: "pepsi", name: "เป๊ปซี่", price: 15},
+                        {id: "seven_up", name: "เซเว่นอัพ", price: 15},
+                        {id: "mirinda", name: "มิรินด้า", price: 15},
+                        {id: "lipton", name: "ลิปตัน", price: 15},
+                        {id: "water_aquafina", name: "น้ำเปล่าอควาฟิน่า", price: 15}
+                    ];
+
+                    drinks.forEach(d => {
+                        document.write(`
+                            <div class="col-6 col-md-4 food-item-card" id="item-${d.id}" data-name="${d.name}">
+                                <div class="card p-2 bg-warning text-dark fw-bold position-relative border-0 shadow-sm" style="border-radius: 12px;">
+                                    <div class="out-of-stock-overlay" style="border-radius:12px;">🛑 หมดค่ะ</div>
+                                    <div class="mb-2">🥤 ${d.name} (฿${d.price})</div>
+                                    <div class="d-flex justify-content-center align-items-center">
+                                        <button class="qty-btn qty-btn-minus" onclick="changeDirectQty('${d.name}', ${d.price}, -1)">-</button>
+                                        <input type="number" id="qty-${d.name}" class="qty-input" value="0" min="0" readonly>
+                                        <button class="qty-btn" onclick="changeDirectQty('${d.name}', ${d.price}, 1)">+</button>
+                                    </div>
+                                </div>
+                            </div>
+                        `);
+                    });
+                </script>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="optionModal" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-radius: 20px;">
+                <div class="modal-header border-0 pb-0">
+                    <h5 class="modal-title fw-bold" id="modalMenuName">ชื่อเมนูอาหาร</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+                </div>
+                <div class="modal-body">
+                    <div id="meat-options-section" class="d-none mb-3">
+                        <p class="fw-bold mb-2 text-primary">🥩 เลือกประเภทเนื้อสัตว์</p>
+                        <div id="meat-radios-container"></div>
+                    </div>
+
+                    <p class="fw-bold mb-2">🍳 เพิ่มท็อปปิ้งพิเศษ</p>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="topFriedEgg"><label class="form-check-label" for="topFriedEgg">เพิ่ม ไข่ดาว (+฿10)</label>
+                    </div>
+                    <div class="form-check mb-2">
+                        <input class="form-check-input" type="checkbox" id="topOmelet"><label class="form-check-label" for="topOmelet">เพิ่ม ไข่เจียว (+฿10)</label>
+                    </div>
+                    <div class="form-check mb-3">
+                        <input class="form-check-input" type="checkbox" id="topRice"><label class="form-check-label" for="topRice">เพิ่มข้าวพิเศษ / เพิ่มเส้น (+฿10)</label>
+                    </div>
+                    
+                    <p class="fw-bold mb-2">🔢 เลือกจำนวนชิ้น</p>
+                    <div class="d-flex align-items-center mb-3">
+                        <button class="qty-btn qty-btn-minus" onclick="updateModalQty(-1)">-</button>
+                        <input type="number" id="modalQtyInput" class="qty-input fs-5 mx-2" value="1" min="1" readonly>
+                        <button class="qty-btn" onclick="updateModalQty(1)">+</button>
+                    </div>
+
+                    <p class="fw-bold mb-2">✍️ โน้ตเพิ่มเติมถึงแม่ค้า</p>
+                    <input type="text" id="customerNote" class="form-control" placeholder="เช่น ไม่ใส่ผัก, เผ็ดจัด, แยกน้ำซุป">
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-success w-100 py-2 fw-bold" style="border-radius: 10px;" onclick="confirmToCart()">ใส่ตะกร้าสินค้า</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal fade" id="receiptModal" data-bs-backdrop="static" tabindex="-1" aria-hidden="true">
+        <div class="modal-dialog modal-dialog-centered">
+            <div class="modal-content" style="border-radius: 20px;">
+                <div class="modal-header border-0 pb-0 text-center d-block">
+                    <h4 class="modal-title fw-bold text-success">🧾 ใบสั่งซื้อสำเร็จ</h4>
+                    <p class="text-muted small mb-0">กรุณาแสดงใบเสร็จนี้หรือสแกนชำระเงินที่เคาน์เตอร์</p>
+                </div>
+                <div class="modal-body">
+                    <div class="p-3 bg-light rounded-3 mb-3 border border-dashed text-dark">
+                        <div class="small d-flex justify-content-between mb-1"><strong>รหัสออเดอร์:</strong> <span id="rec-id">-</span></div>
+                        <div class="small d-flex justify-content-between mb-1"><strong>โต๊ะอาหาร:</strong> <span id="rec-table">-</span></div>
+                        <div class="small d-flex justify-content-between mb-3"><strong>เวลาที่สั่ง:</strong> <span id="rec-time">-</span></div>
+                        <hr>
+                        <div id="rec-items-list" class="mb-3"></div>
+                        <hr>
+                        <div class="d-flex justify-content-between align-items-center"><h5 class="fw-bold mb-0">ยอดรวมทั้งสิ้น:</h5><h4 class="fw-bold text-danger mb-0">฿<span id="rec-total">0</span></h4></div>
+                    </div>
+                    <div class="text-center my-3">
+                        <p class="fw-bold small text-secondary mb-2">📸 สแกน QR Code ด้านล่างเพื่อส่งข้อมูลหรือชำระเงิน</p>
+                        <img id="receipt-qrcode" src="" class="img-fluid border p-2 bg-white shadow-sm rounded" style="width: 180px; height: 180px;" alt="QR Code">
+                    </div>
+                </div>
+                <div class="modal-footer border-0">
+                    <button type="button" class="btn btn-secondary w-100 py-2 fw-bold" style="border-radius: 10px;" data-bs-dismiss="modal">ปิดหน้าต่างใบเสร็จ</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <div class="cart-bar">
+        <div class="container d-flex justify-content-between align-items-center">
+            <div>
+                <span class="fw-bold text-dark">ตะกร้าของคุณ (<span id="cart-count">0</span> ชิ้น)</span>
+                <div class="text-success fw-bold fs-5">รวม: ฿<span id="cart-total">0</span></div>
+            </div>
+            <button class="btn btn-success px-4 py-2 fw-bold" style="border-radius: 10px;" onclick="checkoutOrder()">
+                🚀 กดส่งคำสั่งซื้อ
+            </button>
+        </div>
+    </div>
+
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyA_8LQ8NlJvlfhWlWrEVtKhCkSwQ_kmkg0",
+            authDomain: "rtech-food-center.firebaseapp.com",
+            databaseURL: "https://rtech-food-center-default-rtdb.firebaseio.com",
+            projectId: "rtech-food-center",
+            storageBucket: "rtech-food-center.firebasestorage.app",
+            messagingSenderId: "930605740765",
+            appId: "1:930605740765:web:1bd128fd42743336346134"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        let selectedTable = "ยังไม่ได้เลือก";
+        let cart = [];
+        let globalStock = {}; 
+        let currentMenuName = "";
+        let currentMenuPrice = 0;
+        let currentHasOptions = false;
+        let currentFoodId = "";
+        let myModal = new bootstrap.Modal(document.getElementById('optionModal'));
+        let receiptModal = new bootstrap.Modal(document.getElementById('receiptModal'));
+        let currentOrderKey = ""; 
+        let countdownInterval = null;
+
+        // ผูกรหัสสต็อกใหม่เพื่อให้เปิด-ปิดการขายจากหลังบ้านได้สะดวกขึ้น
+        const productMapping = {
+            'kraprao_group': 'item-kraprao_group', 'khao_phad_group': 'item-khao_phad_group',
+            'suki_group': 'item-suki_group', 'phad_see_ew_group': 'item-phad_see_ew_group', 'prik_kaeng_group': 'item-prik_kaeng_group',
+            'rad_na_muu': 'item-rad_na_muu', 'khua_kai': 'item-khua_kai', 'mama_kee_mao': 'item-mama_kee_mao', 'rad_na_talay': 'item-rad_na_talay',
+            'khua_kling': 'item-khua_kling', 'kuay_tiew_muu': 'item-kuay_tiew_muu', 'kuay_tiew_tom_yum': 'item-kuay_tiew_tom_yum',
+            'muu_kratiem': 'item-muu_kratiem', 'khana_muu_krob': 'item-khana_muu_krob', 'phad_phong_karee': 'item-phad_phong_karee', 'phad_phak_ruam': 'item-phad_phak_ruam', 'khao_khai_jiao': 'item-khao_khai_jiao',
+            'tom_jued_taohu': 'item-tom_jued_taohu', 'tom_yum_kung': 'item-tom_yum_kung', 'tom_yum_ruam_mit': 'item-tom_yum_ruam_mit', 'yam_ruam_mit': 'item-yam_ruam_mit', 'tom_yum_muu_sub': 'item-tom_yum_muu_sub', 'tom_yum_thay_ruam': 'item-tom_yum_thay_ruam', 'tom_yum_hed': 'item-tom_yum_hed', 'tom_yum_pla_muek': 'item-tom_yum_pla_muek',
+            'french_fries_s': 'item-french_fries_s', 'french_fries_m': 'item-french_fries_m', 'french_fries_l': 'item-french_fries_l',
+            'pepsi': 'item-pepsi', 'seven_up': 'item-seven_up', 'mirinda': 'item-mirinda', 'lipton': 'item-lipton', 'water_aquafina': 'item-water_aquafina'
+        };
+
+        function searchMenu() {
+            let input = document.getElementById('search-input').value.toLowerCase();
+            let cards = document.getElementsByClassName('food-item-card');
+            for (let i = 0; i < cards.length; i++) {
+                let menuName = cards[i].getAttribute('data-name').toLowerCase();
+                if (menuName.includes(input)) { cards[i].style.display = ""; } else { cards[i].style.display = "none"; }
+            }
+        }
+
+        database.ref('stock').on('value', (snapshot) => {
+            globalStock = snapshot.val() || {};
+            Object.keys(productMapping).forEach(key => {
+                toggleItemUI(productMapping[key], globalStock[key]);
+            });
+        });
+
+        function toggleItemUI(elementId, isAvailable) {
+            const element = document.getElementById(elementId);
+            if (element) {
+                if (isAvailable === false) { element.classList.add('sold-out'); } else { element.classList.remove('sold-out'); }
+            }
+        }
+
+        function updateTable() { selectedTable = document.getElementById('table-select').value; }
+        function updateModalQty(amount) {
+            const input = document.getElementById('modalQtyInput');
+            let current = parseInt(input.value) || 1;
+            let newVal = current + amount;
+            if(newVal >= 1) input.value = newVal;
+        }
+
+        function openOptionModal(name, price, hasOptions, foodId) {
+            currentMenuName = name;
+            currentMenuPrice = price;
+            currentHasOptions = hasOptions;
+            currentFoodId = foodId;
+            
+            document.getElementById('modalMenuName').innerText = name + " (เริ่มต้น ฿" + price + ")";
+            document.getElementById('topFriedEgg').checked = false;
+            document.getElementById('topOmelet').checked = false;
+            document.getElementById('topRice').checked = false;
+            document.getElementById('modalQtyInput').value = "1";
+            document.getElementById('customerNote').value = "";
+
+            const meatSection = document.getElementById('meat-options-section');
+            const radiosContainer = document.getElementById('meat-radios-container');
+            
+            if (hasOptions) {
+                meatSection.classList.remove('d-none');
+                radiosContainer.innerHTML = "";
+                const foodObj = foods.find(f => f.id === foodId);
+                
+                foodObj.options.forEach((opt, idx) => {
+                    const extra = foodObj.optionPrices[opt];
+                    radiosContainer.insertAdjacentHTML('beforeend', `
+                        <div class="form-check mb-2">
+                            <input class="form-check-input" type="radio" name="meatSelect" id="meat-${idx}" value="${opt}" ${idx === 0 ? 'checked' : ''}>
+                            <label class="form-check-label" for="meat-${idx}">${opt} ${extra > 0 ? '(+฿' + extra + ')' : '(ราคาปกติ)'}</label>
+                        </div>
+                    `);
+                });
+            } else {
+                meatSection.classList.add('d-none');
+            }
+            myModal.show();
+        }
+
+        function confirmToCart() {
+            let basePrice = currentMenuPrice;
+            let finalName = currentMenuName;
+            let toppings = [];
+
+            if (currentHasOptions) {
+                const selectedMeat = document.querySelector('input[name="meatSelect"]:checked').value;
+                const foodObj = foods.find(f => f.id === currentFoodId);
+                basePrice += foodObj.optionPrices[selectedMeat];
+                finalName = `${currentMenuName}${selectedMeat}`;
+            }
+
+            if(document.getElementById('topFriedEgg').checked) { basePrice += 10; toppings.push("เพิ่มไข่ดาว"); }
+            if(document.getElementById('topOmelet').checked) { basePrice += 10; toppings.push("เพิ่มไข่เจียว"); }
+            if(document.getElementById('topRice').checked) { basePrice += 10; toppings.push("เพิ่มข้าว/เส้น"); }
+            let note = document.getElementById('customerNote').value.trim();
+            let qty = parseInt(document.getElementById('modalQtyInput').value) || 1;
+            
+            for(let i = 0; i < qty; i++) {
+                cart.push({
+                    name: finalName,
+                    finalPrice: basePrice,
+                    toppings: toppings.join(", ") || "ไม่มีท็อปปิ้ง",
+                    note: note || "ไม่มีโน้ตพิเศษ"
+                });
+            }
+            updateCartSummary();
+            myModal.hide();
+        }
+
+        function changeDirectQty(name, price, amount) {
+            const qtyInput = document.getElementById(`qty-${name}`);
+            let currentQty = parseInt(qtyInput.value) || 0;
+            let newQty = currentQty + amount;
+            if (newQty < 0) return;
+            qtyInput.value = newQty;
+
+            if (amount > 0) {
+                cart.push({
+                    name: name,
+                    finalPrice: price,
+                    toppings: "ไม่มีท็อปปิ้ง",
+                    note: "ของทานเล่น/เครื่องดื่ม"
+                });
+            } else {
+                const index = cart.map(item => item.name).lastIndexOf(name);
+                if (index !== -1) { cart.splice(index, 1); }
+            }
+            updateCartSummary();
+        }
+
+        function updateCartSummary() {
+            let totalAmount = 0;
+            cart.forEach(item => totalAmount += item.finalPrice);
+            document.getElementById('cart-count').innerText = cart.length;
+            document.getElementById('cart-total').innerText = totalAmount;
+        }
+
+        function checkoutOrder() {
+            if (selectedTable === "ยังไม่ได้เลือก") {
+                alert("❌ กรุณาเลือกหมายเลขโต๊ะที่ด้านบนของหน้าจอก่อนสั่งซื้อนะคะ!");
+                return;
+            }
+            if (cart.length === 0) {
+                alert("❌ ตะกร้าว่างเปล่า! กรุณาเลือกอาหารก่อนค่ะ");
+                return;
+            }
+
+            let totalAmount = 0;
+            cart.forEach(item => totalAmount += item.finalPrice);
+            let timeStr = new Date().toLocaleTimeString('th-TH');
+
+            let orderData = {
+                table: selectedTable,
+                items: cart,
+                total: totalAmount,
+                status: "รอทำ", 
+                timestamp: timeStr 
+            };
+
+            const newOrderRef = database.ref('orders').push();
+            currentOrderKey = newOrderRef.key; 
+
+            newOrderRef.set(orderData)
+            .then(() => {
+                const itemsForReceipt = [...cart];
+                cart = [];
+                updateCartSummary();
+                const inputs = document.querySelectorAll('.qty-input');
+                inputs.forEach(input => input.value = 0);
+
+                document.getElementById('order-status-section').classList.remove('d-none');
+                document.getElementById('status-table-num').innerText = selectedTable;
+                trackOrderStatus(currentOrderKey);
+
+                document.getElementById('rec-id').innerText = currentOrderKey.substring(1, 10).toUpperCase();
+                document.getElementById('rec-table').innerText = selectedTable;
+                document.getElementById('rec-time').innerText = timeStr;
+                document.getElementById('rec-total').innerText = totalAmount;
+
+                let listHtml = "";
+                itemsForReceipt.forEach((item, index) => {
+                    listHtml += `<div class="d-flex justify-content-between small mb-1">
+                        <span>${index + 1}. ${item.name} <br><small class="text-muted">(${item.toppings}) | โน้ต: ${item.note}</small></span>
+                        <span class="fw-bold">฿${item.finalPrice}</span>
+                    </div>`;
+                });
+                document.getElementById('rec-items-list').innerHTML = listHtml;
+
+                let qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=180x180&data=RTechFood-Order-${currentOrderKey}`;
+                document.getElementById('receipt-qrcode').src = qrUrl;
+
+                receiptModal.show();
+            })
+            .catch((error) => {
+                alert("เกิดข้อผิดพลาดในการสั่งซื้อ: " + error.message);
+            });
+        }
+
+        function trackOrderStatus(orderKey) {
+            database.ref('orders/' + orderKey + '/status').on('value', (snapshot) => {
+                let currentStatus = snapshot.val();
+                let badge = document.getElementById('order-status-badge');
+                let cancelBtn = document.getElementById('cancel-order-btn');
+                let countdownArea = document.getElementById('countdown-area');
+                
+                if (currentStatus) {
+                    badge.innerText = currentStatus;
+                    if (currentStatus === "รอทำ") {
+                        badge.className = "badge bg-warning text-dark fs-6 py-2 px-3";
+                        cancelBtn.classList.remove('d-none'); 
+                        countdownArea.classList.add('d-none');
+                        clearInterval(countdownInterval);
+                    } else if (currentStatus === "กำลังทำ") {
+                        badge.className = "badge bg-primary text-white fs-6 py-2 px-3";
+                        cancelBtn.classList.add('d-none'); 
+                        countdownArea.classList.remove('d-none');
+                        startCountdown(7); 
+                    } else if (currentStatus === "เสร็จแล้ว") {
+                        badge.className = "badge bg-success text-white fs-6 py-2 px-3";
+                        cancelBtn.classList.add('d-none');
+                        countdownArea.classList.add('d-none');
+                        clearInterval(countdownInterval);
+                        alert("🎉 อาหารของโต๊ะที่ " + selectedTable + " ทำเสร็จเรียบร้อยแล้วค่ะ มารับได้เลยน้า!");
+                    }
+                } else {
+                    document.getElementById('order-status-section').classList.add('d-none');
+                    clearInterval(countdownInterval);
+                }
+            });
+        }
+
+        function startCountdown(durationMinutes) {
+            clearInterval(countdownInterval);
+            let time = durationMinutes * 60;
+            const label = document.getElementById('timer-label');
+            countdownInterval = setInterval(() => {
+                let minutes = Math.floor(time / 60);
+                let seconds = time % 60;
+                label.innerText = String(minutes).padStart(2, '0') + ":" + String(seconds).padStart(2, '0');
+                if (--time < 0) { label.innerText = "ใกล้เสร็จแล้ว"; clearInterval(countdownInterval); }
+            }, 1000);
+        }
+
+        function cancelMyOrder() {
+            if (confirm("คุณต้องการยกเลิกคำสั่งซื้อนี้ใช่ไหมคะ?")) {
+                if (currentOrderKey) {
+                    database.ref('orders/' + currentOrderKey).remove().then(() => {
+                        alert("🗑️ ยกเลิกออเดอร์สำเร็จเรียบร้อยแล้วค่ะ");
+                        document.getElementById('order-status-section').classList.add('d-none');
+                    });
+                }
+            }
+        }
+    </script>
+</body>
+</html>

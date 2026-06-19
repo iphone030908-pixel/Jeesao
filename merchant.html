@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>ระบบหลังร้านแม่ค้า - R-Tech Food Center</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <style>
+        body { background-color: #343a40; color: #fff; font-family: sans-serif; padding-top: 20px; padding-bottom: 50px; }
+        .order-card { background-color: #ffff; color: #333; border-radius: 15px; border: none; margin-bottom: 20px; box-shadow: 0 4px 15px rgba(0,0,0,0.2); overflow: hidden; }
+        .order-header { color: #000; padding: 12px; font-weight: bold; }
+        
+        .status-waiting { background-color: #ffc107; } 
+        .status-cooking { background-color: #0d6efd; color: #fff !important; } 
+        .status-finished { background-color: #198754; color: #fff !important; } 
+
+        .revenue-box { background: #28a745; color: white; padding: 20px; border-radius: 12px; margin: 20px 0; text-align: center; }
+        
+        .stock-section { background-color: #212529; border-radius: 15px; padding: 20px; margin-bottom: 30px; border: 1px solid #495057; }
+        .stock-item { background: #2c3034; padding: 10px 15px; border-radius: 10px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; border-left: 4px solid #198754; transition: 0.3s; }
+        .stock-item.out-of-stock { border-left: 4px solid #dc3545; background: #25282b; opacity: 0.7; }
+        
+        .history-section { background-color: #1c1f22; border-radius: 15px; padding: 20px; margin-bottom: 30px; border: 1px solid #ffc107; }
+        .history-item { background: #2a2e33; border-radius: 10px; padding: 12px; margin-bottom: 10px; border-left: 4px solid #ffc107; }
+
+        .switch { position: relative; display: inline-block; width: 50px; height: 26px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #dc3545; transition: .3s; border-radius: 34px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 4px; bottom: 4px; background-color: white; transition: .3s; border-radius: 50%; }
+        input:checked + .slider { background-color: #198754; }
+        input:checked + .slider:before { transform: translateX(24px); }
+    </style>
+</head>
+<body>
+
+    <div class="container">
+        <div class="revenue-box">
+            <span style="font-size: 18px; opacity: 0.9;">💰 ยอดขายรวม <span id="revenue-date-label">วันนี้</span></span>
+            <h1 id="todayRevenue" style="font-size: 36px; margin: 5px 0 10px 0; font-weight: bold;">0 บาท</h1>
+            
+            <div class="d-flex justify-content-center align-items-center gap-2 mt-2">
+                <label for="search-date" class="small mb-0 text-white-50">ดูยอดขายและประวัติวันอื่น:</label>
+                <input type="date" id="search-date" class="form-control form-control-sm w-auto text-center" onchange="changeRevenueDate(this.value)">
+            </div>
+        </div>
+
+        <div class="stock-section border-warning">
+            <h4 class="text-warning fw-bold mb-3">🥩 ระบบเปิด/ปิดวัตถุดิบสดแยกชิ้น (เนื้อสัตว์หมดกดปิดที่นี่)</h4>
+            <div class="row" id="meat-stock-container">
+                </div>
+        </div>
+
+        <div class="stock-section">
+            <h4 class="text-warning fw-bold mb-3">📦 ระบบเปิด/ปิดสต็อกสินค้าชั่วคราว (รายเมนูหลัก)</h4>
+            <p class="small text-white-50">สวิตช์ <span class="text-success">สีเขียว = มีสินค้า</span> | <span class="text-danger">สีแดง = สินค้าหมด</span></p>
+            
+            <div class="row">
+                <div class="col-md-4 mb-3">
+                    <h6 class="text-info border-bottom pb-1">🍳 อาหารจานเดียว & แกงต้มยำ</h6>
+                    <div id="stock-container-foods" style="max-height: 400px; overflow-y: auto; padding-right: 5px;"></div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <h6 class="text-info border-bottom pb-1">🍟 ของทานเล่น</h6>
+                    <div id="stock-container-snacks" style="max-height: 400px; overflow-y: auto; padding-right: 5px;"></div>
+                </div>
+                <div class="col-md-4 mb-3">
+                    <h6 class="text-info border-bottom pb-1">🥤 เครื่องดื่ม</h6>
+                    <div id="stock-container-drinks" style="max-height: 400px; overflow-y: auto; padding-right: 5px;"></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="history-section">
+            <h4 class="text-warning fw-bold mb-3">📜 ประวัติรายการอาหารที่ขายได้ (<span id="history-date-title">วันนี้</span>)</h4>
+            <div id="history-container" class="row">
+                <div class="text-center text-muted py-3">ไม่มีประวัติการขายออเดอร์ในวันที่เลือก</div>
+            </div>
+        </div>
+
+        <div class="d-flex justify-content-between align-items-center mb-4 border-bottom pb-3">
+            <h2 class="fw-bold text-warning">🏪 หน้าจอจัดการออเดอร์ (ฝั่งแม่ค้า)</h2>
+            <span class="badge bg-danger fs-6" id="total-incoming">มีออเดอร์เข้ามา: 0 รายการ</span>
+        </div>
+
+        <div class="row" id="orders-container">
+            <div class="text-center text-muted py-5">กำลังรอออเดอร์ใหม่จากลูกค้าสแกนสั่งเข้ามา...</div>
+        </div>
+    </div>
+
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-app.js"></script>
+    <script src="https://www.gstatic.com/firebasejs/8.10.1/firebase-database.js"></script>
+
+    <script>
+        const firebaseConfig = {
+            apiKey: "AIzaSyA_8LQ8NlJvlfhWlWrEVtKhCkSwQ_kmkg0",
+            authDomain: "rtech-food-center.firebaseapp.com",
+            databaseURL: "https://rtech-food-center-default-rtdb.firebaseio.com",
+            projectId: "rtech-food-center",
+            storageBucket: "rtech-food-center.firebasestorage.app",
+            messagingSenderId: "930605740765",
+            appId: "1:930605740765:web:1bd128fd42743336346134"
+        };
+        
+        firebase.initializeApp(firebaseConfig);
+        const database = firebase.database();
+
+        let lastOrderCount = 0;
+        let revenueListener = null; 
+        let historyListener = null;
+
+        // วัตถุดิบสดที่ต้องการให้เปิด/ปิดแยกส่วนได้
+        const meatItems = ["หมู", "ไก่", "กุ้ง", "ทะเลรวม"];
+
+        // อัปเดตรายชื่อสินค้าฝั่งแม่ค้าให้สอดคล้องกับการยุบรวมกลุ่ม 5 เมนูหลักของฝั่งลูกค้า
+        const allProducts = {
+            foods: [
+                {key: 'kraprao_group', name: "ผัดกะเพรา (กลุ่ม)"},
+                {key: 'khao_phad_group', name: "ข้าวผัด (กลุ่ม)"},
+                {key: 'suki_group', name: "สุกี้ (กลุ่ม)"},
+                {key: 'phad_see_ew_group', name: "ผัดซีอิ๊ว (กลุ่ม)"},
+                {key: 'prik_kaeng_group', name: "ผัดพริกแกง (กลุ่ม)"},
+                {key: 'rad_na_muu', name: "ราดหน้าหมู/ไก่/หมูหมัก"},
+                {key: 'khua_kai', name: "ก๋วยเตี๋ยวคั่วไก่ / หมู"},
+                {key: 'mama_kee_mao', name: "มาม่าผัดขี้เมา"},
+                {key: 'rad_na_talay', name: "ราดหน้าทะเลรวม/หมึก/กุ้ง"},
+                {key: 'khua_kling', name: "คั่วกลิ้งหมู / ไก่"},
+                {key: 'kuay_tiew_muu', name: "ก๋วยเตี๋ยวหมูหมัก / หมูสด"},
+                {key: 'kuay_tiew_tom_yum', name: "ก๋วยเตี๋ยวหมูต้มยำ"},
+                {key: 'muu_kratiem', name: "หมูกระเทียม"},
+                {key: 'khana_muu_krob', name: "ผัดคะน้าหมูกรอบ"},
+                {key: 'phad_phong_karee', name: "ผัดผงกะหรี่"},
+                {key: 'phad_phak_ruam', name: "ผัดผักรวมมิตร"},
+                {key: 'khao_khai_jiao', name: "ข้าวไข่เจียว"},
+                {key: 'tom_jued_taohu', name: "ต้มจืดเต้าหู้"},
+                {key: 'tom_yum_kung', name: "ต้มยำกุ้ง"},
+                {key: 'tom_yum_ruam_mit', name: "ต้มยำรวมมิตร"},
+                {key: 'yam_ruam_mit', name: "ยำรวมมิตร / ยำรวม"},
+                {key: 'tom_yum_muu_sub', name: "ต้มยำหมูสับ"},
+                {key: 'tom_yum_thay_ruam', name: "ต้มยำทะเลรวม"},
+                {key: 'tom_yum_hed', name: "ต้มยำเห็ดรวม"},
+                {key: 'tom_yum_pla_muek', name: "ต้มยำปลาหมึก"}
+            ],
+            snacks: [
+                {key: 'french_fries_s', name: "เฟรนช์ฟรายส์ เล็ก"},
+                {key: 'french_fries_m', name: "เฟรนช์ฟรายส์ กลาง"},
+                {key: 'french_fries_l', name: "เฟรนช์ฟรายส์ ใหญ่"}
+            ],
+            drinks: [
+                {key: 'pepsi', name: "เป๊ปซี่"},
+                {key: 'seven_up', name: "เซเว่นอัพ"},
+                {key: 'mirinda', name: "มิรินด้า"},
+                {key: 'lipton', name: "ลิปตัน"},
+                {key: 'water_aquafina', name: "น้ำเปล่าอควาฟิน่า"}
+            ]
+        };
+
+        // ฟังก์ชันสร้าง UI สวิตช์เปิด-ปิดวัตถุดิบเนื้อสัตว์
+        function renderMeatControls() {
+            let html = "";
+            meatItems.forEach(meat => {
+                html += `
+                    <div class="col-6 col-md-3 mb-2">
+                        <div class="stock-item" id="layout-meat-${meat}">
+                            <span>🥩 ${meat}</span>
+                            <label class="switch">
+                                <input type="checkbox" id="meat-${meat}" onchange="updateMeatStock('${meat}')">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    </div>
+                `;
+            });
+            document.getElementById('meat-stock-container').innerHTML = html;
+        }
+
+        function renderStockControls() {
+            let htmlFoods = ""; allProducts.foods.forEach(p => { htmlFoods += createItemRowHtml(p.key, p.name); });
+            document.getElementById('stock-container-foods').innerHTML = htmlFoods;
+            let htmlSnacks = ""; allProducts.snacks.forEach(p => { htmlSnacks += createItemRowHtml(p.key, p.name); });
+            document.getElementById('stock-container-snacks').innerHTML = htmlSnacks;
+            let htmlDrinks = ""; allProducts.drinks.forEach(p => { htmlDrinks += createItemRowHtml(p.key, p.name); });
+            document.getElementById('stock-container-drinks').innerHTML = htmlDrinks;
+        }
+
+        function createItemRowHtml(key, name) {
+            return `
+                <div class="stock-item" id="layout-${key}">
+                    <span>${name}</span>
+                    <label class="switch">
+                        <input type="checkbox" id="stock-${key}" onchange="updateStock('${key}')">
+                        <span class="slider"></span>
+                    </label>
+                </div>
+            `;
+        }
+
+        function getTodayDateString() {
+            const today = new Date();
+            return `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, '0')}-${String(today.getDate()).padStart(2, '0')}`;
+        }
+
+        // ฟังก์ชันบันทึกสวิตช์เนื้อสัตว์ลง Firebase
+        function updateMeatStock(meatName) {
+            const isAvailable = document.getElementById(`meat-${meatName}`).checked;
+            database.ref('meat_stock/' + meatName).set(isAvailable);
+        }
+
+        function updateStock(productKey) {
+            const isAvailable = document.getElementById(`stock-${productKey}`).checked;
+            database.ref('stock/' + productKey).set(isAvailable);
+        }
+
+        // ดึงค่าสถานะสวิตช์เนื้อสัตว์จาก Firebase แบบเรียลไทม์
+        database.ref('meat_stock').on('value', (snapshot) => {
+            const meatData = snapshot.val() || {};
+            meatItems.forEach(meat => {
+                const checkbox = document.getElementById(`meat-${meat}`);
+                const layout = document.getElementById(`layout-meat-${meat}`);
+                if (checkbox) {
+                    const status = meatData[meat] !== false; // ถ้าไม่มีค่าให้เป็น true (เปิด) ไว้ก่อน
+                    checkbox.checked = status;
+                    if (layout) {
+                        if (!status) layout.classList.add('out-of-stock');
+                        else layout.classList.remove('out-of-stock');
+                    }
+                }
+            });
+        });
+
+        database.ref('stock').on('value', (snapshot) => {
+            const stockData = snapshot.val() || {};
+            Object.keys(allProducts).forEach(category => {
+                allProducts[category].forEach(product => {
+                    const checkbox = document.getElementById(`stock-${product.key}`);
+                    const layout = document.getElementById(`layout-${product.key}`);
+                    if (checkbox) {
+                        const status = stockData[product.key] !== false;
+                        checkbox.checked = status;
+                        if (layout) {
+                            if (!status) layout.classList.add('out-of-stock');
+                            else layout.classList.remove('out-of-stock');
+                        }
+                    }
+                });
+            });
+        });
+
+        function playNotificationSound() {
+            try {
+                const audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+                const oscillator = audioCtx.createOscillator();
+                const gainNode = audioCtx.createGain();
+                oscillator.type = 'sine';
+                oscillator.frequency.setValueAtTime(587.33, audioCtx.currentTime); 
+                oscillator.frequency.setValueAtTime(880, audioCtx.currentTime + 0.1); 
+                gainNode.gain.setValueAtTime(0.3, audioCtx.currentTime);
+                gainNode.gain.exponentialRampToValueAtTime(0.01, audioCtx.currentTime + 0.4);
+                oscillator.connect(gainNode); gainNode.connect(audioCtx.destination);
+                oscillator.start(); oscillator.stop(audioCtx.currentTime + 0.4);
+            } catch (e) {}
+        }
+
+        function changeRevenueDate(selectedDate) {
+            if (!selectedDate) return;
+            if (revenueListener) database.ref('daily_revenues/' + currentViewingDate).off('value', revenueListener);
+            if (historyListener) database.ref('past_orders/' + currentViewingDate).off('value', historyListener);
+            currentViewingDate = selectedDate;
+            const today = getTodayDateString();
+            
+            document.getElementById('revenue-date-label').innerText = selectedDate === today ? "วันนี้" : `วันที่ ${selectedDate}`;
+            document.getElementById('history-date-title').innerText = selectedDate === today ? "วันนี้" : `วันที่ ${selectedDate}`;
+
+            revenueListener = database.ref('daily_revenues/' + selectedDate).on('value', (snapshot) => {
+                document.getElementById('todayRevenue').innerText = (snapshot.val() || 0).toLocaleString() + " บาท";
+            });
+
+            historyListener = database.ref('past_orders/' + selectedDate).on('value', (snapshot) => {
+                const container = document.getElementById('history-container'); container.innerHTML = "";
+                const orders = snapshot.val();
+                if (!orders) { container.innerHTML = '<div class="text-center text-muted py-2">ไม่มีประวัติการขายออเดอร์ในวันที่เลือก</div>'; return; }
+
+                Object.keys(orders).forEach(orderId => {
+                    const order = orders[orderId];
+                    let itemsDetail = "";
+                    order.items.forEach((item, idx) => {
+                        itemsDetail += `<div class="small text-white-50">🔹 ${idx+1}. ${item.name} ${item.toppings ? `(${item.toppings})`:''} x1</div>`;
+                    });
+                    container.innerHTML += `
+                        <div class="col-md-4">
+                            <div class="history-item">
+                                <div class="d-flex justify-content-between fw-bold mb-1">
+                                    <span class="text-warning">📍 โต๊ะที่ ${order.table}</span>
+                                    <span class="text-success">฿${order.total}</span>
+                                </div>
+                                <div class="mb-2">${itemsDetail}</div>
+                                <div style="font-size: 11px;" class="text-end text-muted">⏰ เสร็จตอน: ${order.clearedAt || order.timestamp}</div>
+                            </div>
+                        </div>`;
+                });
+            });
+        }
+
+        let currentViewingDate = getTodayDateString();
+        document.getElementById('search-date').value = currentViewingDate;
+        renderMeatControls(); // เรียกใช้ตัวสร้างปุ่มเนื้อสัตว์
+        renderStockControls();
+        changeRevenueDate(currentViewingDate);
+
+        database.ref('orders').on('value', (snapshot) => {
+            const container = document.getElementById('orders-container'); container.innerHTML = "";
+            const data = snapshot.val();
+            if(!data) {
+                container.innerHTML = '<div class="text-center text-muted py-5 fs-5">ไม่มีออเดอร์ค้างส่งในขณะนี้ 👍</div>';
+                document.getElementById('total-incoming').innerText = "มีออเดอร์เข้ามา: 0 รายการ";
+                lastOrderCount = 0; return;
+            }
+            let orderKeys = Object.keys(data);
+            document.getElementById('total-incoming').innerText = "มีออเดอร์เข้ามา: " + orderKeys.length + " รายการ";
+            if (orderKeys.length > lastOrderCount) playNotificationSound();
+            lastOrderCount = orderKeys.length;
+
+            orderKeys.forEach((key) => {
+                let order = data[key];
+                let currentStatus = order.status || "รอทำ";
+                let headerClass = currentStatus === "กำลังทำ" ? "status-cooking" : (currentStatus === "เสร็จแล้ว" ? "status-finished" : "status-waiting");
+
+                let itemsHtml = "";
+                order.items.forEach((item, index) => {
+                    itemsHtml += `<li class="list-group-item d-flex justify-content-between align-items-start border-0 px-0">
+                        <div class="ms-2 me-auto">
+                            <div class="fw-bold text-dark">${index+1}. ${item.name}</div>
+                            <small class="text-muted">รายละเอียด: ${item.toppings || ''} ${item.note ? `| 📝 โน้ต: ${item.note}`:''}</small>
+                        </div>
+                        <span class="badge bg-secondary rounded-pill">฿${item.finalPrice}</span>
+                    </li>`;
+                });
+
+                let actionButtons = currentStatus === "รอทำ" ? `<button class="btn btn-primary btn-sm fw-bold me-2" onclick="setOrderStatus('${key}', 'กำลังทำ')">⏳ เริ่มทำอาหาร</button>` : 
+                                (currentStatus === "กำลังทำ" ? `<button class="btn btn-success btn-sm fw-bold me-2" onclick="setOrderStatus('${key}', 'เสร็จแล้ว')">✅ ทำเสร็จแล้ว</button>` : 
+                                `<button class="btn btn-dark btn-sm fw-bold" onclick="finishAndClearBill('${key}')">📦 ส่งมอบอาหารสำเร็จ/เคลียร์บิล</button>`);
+
+                container.innerHTML += `
+                    <div class="col-md-6" id="card-${key}">
+                        <div class="card order-card">
+                            <div class="order-header ${headerClass} d-flex justify-content-between align-items-center">
+                                <span>📍 โต๊ะที่ ${order.table} [สถานะ: ${currentStatus}]</span>
+                                <span class="small">⏰ สั่งเมื่อ ${order.timestamp}</span>
+                            </div>
+                            <div class="card-body">
+                                <ul class="list-group list-group-flush mb-3">${itemsHtml}</ul>
+                                <div class="d-flex justify-content-between align-items-center border-top pt-2">
+                                    <h5 class="fw-bold mb-0 text-dark">ราคารวม: <span class="text-danger">฿${order.total}</span></h5>
+                                    <div>${actionButtons}</div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>`;
+            });
+        });
+
+        function setOrderStatus(orderId, nextStatus) { database.ref('orders/' + orderId).update({ status: nextStatus }); }
+
+        function finishAndClearBill(id) {
+            if(confirm("ส่งมอบอาหารสำเร็จและต้องการเก็บันทึกยอดขายออเดอร์นี้ใช่ไหมคะ?")) {
+                database.ref('orders/' + id).once('value').then((snapshot) => {
+                    const orderData = snapshot.val();
+                    if (orderData && orderData.total) {
+                        const todayStr = getTodayDateString(); 
+                        orderData.clearedAt = String(new Date().getHours()).padStart(2, '0') + ":" + String(new Date().getMinutes()).padStart(2, '0');
+                        database.ref('past_orders/' + todayStr + '/' + id).set(orderData).then(() => {
+                            database.ref('daily_revenues/' + todayStr).transaction(v => (v || 0) + Number(orderData.total)).then(() => {
+                                database.ref('orders/' + id).remove();
+                            });
+                        });
+                    } else { database.ref('orders/' + id).remove(); }
+                });
+            }
+        }
+    </script>
+</body>
+</html>
